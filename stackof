@@ -1,53 +1,50 @@
 #!/usr/bin/env python
 #Search stack overflow from command line
 
-from __future__ import print_function
+import argparse
 import requests
-import html5lib
-import sys
-from html5lib import treebuilders
+import json
 
 
-def google_search(query):
-    import urllib
-    args = {'q': query,
-            'v': '1.0',
-            'start': 0,
-            'rsz': 8,
-            'safe': "off",
-            'filter': 1,
-            'hl': 'en'}
-    data = requests.get('http://ajax.googleapis.com/ajax/services/search/web',
-                        params=args).json()
-    if 'responseStatus' not in data:
-        return 'response does not have a responseStatus'
-    if data['responseStatus'] != 200:
-        return data.get('responseDetails', 'responseStatus is not 200')
-    results = []
-    if 'results' in data['responseData']:
-        for result in data['responseData']['results']:
-            results.append(urllib.unquote(result['unescapedUrl']))
-    return results
+def search_stack_overflow(query, tagged, min_answers):
+    if min_answers == None:
+        min_answers = 1
 
+    ## Construct the URL for the API endpoint
+    url = "https://api.stackexchange.com/2.3/search/advanced"
 
-if len(sys.argv) < 2:
-    print("Usage: {0} your query".format(sys.argv[0]), file=sys.stderr)
-    sys.exit(1)
+    ## Set the params for the GET request
 
-parser = html5lib.HTMLParser(tree=treebuilders.getTreeBuilder("lxml"))
-query = 'www.stackoverflow.com ' + ' '.join(sys.argv[1:])
-answer_xpath = ('.//{http://www.w3.org/1999/xhtml}div[@class="answer"]//'
-                '{http://www.w3.org/1999/xhtml}div[@class="post-text"]')
-stack_overflow_urls = google_search(query)
-if isinstance(stack_overflow_urls, str):
-    print(stack_overflow_urls)
-    sys.exit(1)
-if len(stack_overflow_urls) == 0:
-    print("Found nothing.")
-    sys.exit(1)
-print("\n".join(stack_overflow_urls[:3]))
-stack_overflow_html = requests.get(stack_overflow_urls[0]).text
-stack_overflow_dom = parser.parse(stack_overflow_html)
-stack_overflow_answers = stack_overflow_dom.findall(answer_xpath)
-if len(stack_overflow_answers) > 0:
-    print(''.join([txt for txt in stack_overflow_answers[0].itertext()]))
+    params = {
+        "order": "desc",
+        "sort": "relevance",
+        "q": query,
+        "site": "stackoverflow",
+        "tagged": tagged
+    }
+
+    ## Send the GET request and get the response
+    response = requests.get(url, params=params)
+
+    ## Parse JSON
+    data = json.loads(response.text)
+
+    ## TODO: Implement custom sort that prioritizes recent answers
+    ## orrrrr have a filter that is always on unless otherwise flagged that limits results to the past 18 months. 
+
+    ## Print the search results (Limit of 5)
+    
+    for index, item in enumerate(data['items']):
+        if index < 6:
+            print(f'{item["title"]} - {item["link"]}')
+
+if __name__ == "__main__":
+    ## Define the command-line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-q", "--query", required=True, help="Content of the query to be submitted.")
+    parser.add_argument("-t", "--tagged", required=False, help="Filters posts to those containing the tags supplied")
+    parser.add_argument("-a", "--min_answers", required=False, help="The minimum number of answers returned questions must have. Default value of 1")
+
+    args = parser.parse_args()
+
+    search_stack_overflow(args.query, args.tagged, args.min_answers)
